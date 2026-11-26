@@ -1,0 +1,31 @@
+# Goes in the log's repository as .github/workflows/mirror.yml. It follows nelori.com every three hours, a little
+# after Nelori's own run, and commits the lists of versions that grew. It never stages keys.json: a key is added by
+# hand. A run that refused something fails, which is how the repository's owner hears of it.
+name: mirror
+on:
+  schedule:
+    - cron: "40 */3 * * *"
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: mirror
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Follow nelori.com
+        run: node mirror.mjs
+      - name: Keep what was written
+        if: always()
+        run: |
+          # Each by itself: before the first record there is no heads folder, and state.json must still be kept.
+          for kept in heads state.json; do
+            if [ -e "$kept" ]; then git add "$kept"; fi
+          done
+          if ! git diff --cached --quiet; then
+            git -c user.name="nelori-provenance-log" -c user.email="provenance-log@users.noreply.github.com" commit -m "Versions as nelori.com lists them at $(date -u +%Y-%m-%dT%H:%MZ)"
+            git push
+          fi
